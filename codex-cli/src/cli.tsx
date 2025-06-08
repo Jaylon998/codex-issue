@@ -69,6 +69,7 @@ const cli = meow(
   Usage
     $ codex [options] <prompt>
     $ codex completion <bash|zsh|fish>
+    $ codex config
 
   Options
     --version                       Print version and exit
@@ -116,6 +117,7 @@ const cli = meow(
     $ codex "Write and run a python program that prints ASCII art"
     $ codex -q "fix build issues"
     $ codex completion bash
+    $ codex config
 `,
   {
     importMeta: import.meta,
@@ -250,6 +252,142 @@ complete -c codex -a '(__fish_complete_path)' -d 'file path'`,
   }
   // eslint-disable-next-line no-console
   console.log(script);
+  process.exit(0);
+}
+
+// Handle 'config' subcommand to show current configuration
+if (cli.input[0] === "config") {
+  try {
+    const tempConfig = loadConfig(undefined, undefined, {
+      cwd: process.cwd(),
+      disableProjectDoc: Boolean(cli.flags.noProjectDoc),
+      projectDocPath: cli.flags.projectDoc,
+      isFullContext: Boolean(cli.flags.fullContext),
+    });
+
+    const model = cli.flags.model ?? tempConfig.model;
+    const provider = cli.flags.provider ?? tempConfig.provider ?? "openai";
+    const apiKeyEnvVar = `${provider.toUpperCase()}_API_KEY`;
+    const hasApiKey = Boolean(process.env[apiKeyEnvVar]);
+
+    // eslint-disable-next-line no-console
+    console.log(chalk.bold("\nCodex Configuration:"));
+    // eslint-disable-next-line no-console
+    console.log(`${chalk.blue("Model:")} ${model}`);
+    // eslint-disable-next-line no-console
+    console.log(`${chalk.blue("Provider:")} ${provider}`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `${chalk.blue("API Key:")} ${hasApiKey ? chalk.green("✓ Set") : chalk.red("✗ Not set")} (${apiKeyEnvVar})`,
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `${chalk.blue("Approval Mode:")} ${tempConfig.approvalMode || "suggest"}`,
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `${chalk.blue("Notifications:")} ${tempConfig.notify ? chalk.green("enabled") : chalk.yellow("disabled")}`,
+    );
+
+    // Show config file paths
+    // eslint-disable-next-line no-console
+    console.log(chalk.bold("\nConfiguration Files:"));
+
+    const home = os.homedir();
+    const configDir = path.join(home, ".codex");
+    const configJsonPath = path.join(configDir, "config.json");
+    const configYamlPath = path.join(configDir, "config.yaml");
+    const configYmlPath = path.join(configDir, "config.yml");
+    const instructionsPath = path.join(configDir, "instructions.md");
+
+    let foundConfigFile = false;
+    for (const configFile of [configJsonPath, configYamlPath, configYmlPath]) {
+      if (fs.existsSync(configFile)) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `${chalk.blue("Config file:")} ${configFile} ${chalk.green("(exists)")}`,
+        );
+        foundConfigFile = true;
+        break;
+      }
+    }
+    if (!foundConfigFile) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `${chalk.blue("Config file:")} ${configJsonPath} ${chalk.yellow("(will be created)")}`,
+      );
+    }
+
+    if (fs.existsSync(instructionsPath)) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `${chalk.blue("Instructions file:")} ${instructionsPath} ${chalk.green("(exists)")}`,
+      );
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(
+        `${chalk.blue("Instructions file:")} ${instructionsPath} ${chalk.yellow("(not found)")}`,
+      );
+    }
+
+    // Show project documentation
+    const projectDocNames = ["AGENTS.md", "codex.md", ".codex.md", "CODEX.md"];
+    let projectDocPath = null;
+
+    // Check current directory first
+    for (const name of projectDocNames) {
+      const candidate = path.join(process.cwd(), name);
+      if (fs.existsSync(candidate)) {
+        projectDocPath = candidate;
+        break;
+      }
+    }
+
+    // If not found, check git root
+    if (!projectDocPath) {
+      let dir = process.cwd();
+      while (dir !== path.dirname(dir)) {
+        const gitPath = path.join(dir, ".git");
+        if (fs.existsSync(gitPath)) {
+          for (const name of projectDocNames) {
+            const candidate = path.join(dir, name);
+            if (fs.existsSync(candidate)) {
+              projectDocPath = candidate;
+              break;
+            }
+          }
+          break;
+        }
+        dir = path.dirname(dir);
+      }
+    }
+
+    if (projectDocPath) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `${chalk.blue("Project doc:")} ${projectDocPath} ${chalk.green("(found)")}`,
+      );
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(
+        `${chalk.blue("Project doc:")} ${chalk.yellow("not found")} (looking for AGENTS.md)`,
+      );
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(`${chalk.blue("Working directory:")} ${process.cwd()}`);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      chalk.dim(
+        `\nUse 'codex --config' to edit instructions or check the documentation for more options.`,
+      ),
+    );
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`${chalk.red("Error loading configuration:")} ${error}`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 
